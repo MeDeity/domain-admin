@@ -9,8 +9,10 @@ from domain_admin.api import auth_api
 from domain_admin.api import system_api
 from domain_admin.api import user_api
 from domain_admin.api import log_scheduler_api
+from domain_admin.api import auto_operator_api
 
 routes = {
+    "/api/auto": auto_operator_api.handle,
     # 域名信息
     "/api/getCertInformation": cert_api.get_cert_information,
 
