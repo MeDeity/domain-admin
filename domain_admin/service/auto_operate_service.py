@@ -58,7 +58,8 @@ def wait_for_all_elements(driver, by, value, timeout=10):
 def handle():
     # toRegister()
     # userDetail()
-    uploadAvatar()
+    # uploadAvatar()
+    start()
 
     # element = wait_for_visibility(driver,By.CSS_SELECTOR,"#changeList > tbody > gr-change-list-item:nth-child(20) > td.cell.subject.style-scope.gr-change-list-item")
     # title = element.text
@@ -127,12 +128,35 @@ def userDetail():
 def uploadAvatar():
     driver,wait = initDriver()
     driver.get("https://badoo.com/")
+    
+    #继续
+    wait_for_click(driver,By.CSS_SELECTOR,"#simple-page > div.page__content > section > div.simple-promo__content > div.simple-promo__actions > button")
 
     # file_input = driver.find_element(By.CSS_SELECTOR, "input[type='file']")
     # file_input.send_keys("C:\\Users\\Administrator\\Desktop\\1.jpg")
     # wait_for_input(driver,By.XPATH,'//*[@id="simple-page"]/div[2]/section/div[1]/div[2]/div[1]/div/div[2]/div/div',"C:\\Users\\Administrator\\Desktop\\1.jpg")
     time.sleep(3600)    
+
+def start():
+    driver,wait = initDriver()
+    driver.get("https://badoo.com/")
+    for i in range(1):
+        print("....")
+        wait_for_click(driver,By.CSS_SELECTOR,'#mm_cc > div.encounters-card__inner > section > div > div.big-photo__actions.js-profile-actions-container.js-core-events-container > div > div.encounters-actions__main-items.js-profile-header-buttons > div.encounters-actions__item.encounters-actions__item--yes > button')
+        time.sleep(3.5)   
+    element = wait_for_visibility(driver,By.CSS_SELECTOR,"#tabbar > nav > a:nth-child(4) > div.sidebar-menu__item-mark > span")     
+    if element:
+        numberStr = element.text or '0'
+        number = int(numberStr)
+        print("element:",number)
+        # 准备聊天
+        wait_for_click(driver,By.CSS_SELECTOR,'//*[@id="tabbar"]/nav/a[3]')
+        
+
     
+        
+
+    time.sleep(3600)
     
 
 
