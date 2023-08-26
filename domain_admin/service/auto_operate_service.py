@@ -140,37 +140,38 @@ def uploadAvatar():
 def start():
     driver,wait = initDriver()
     driver.get("https://badoo.com/")
-    for i in range(5):
-        print("....")
-        wait_for_click(driver,By.CSS_SELECTOR,'#mm_cc > div.encounters-card__inner > section > div > div.big-photo__actions.js-profile-actions-container.js-core-events-container > div > div.encounters-actions__main-items.js-profile-header-buttons > div.encounters-actions__item.encounters-actions__item--yes > button')
-        time.sleep(3.5)   
-    try:    
-        # element = wait_for_visibility(driver,By.CSS_SELECTOR,"#tabbar > nav > a:nth-child(4) > div.sidebar-menu__item-mark > span")     
-        # if element:
-        # numberStr = element.text or '0'
-        # number = int(numberStr)
-        # print("element:",number)
-        # 准备聊天
-        wait_for_click(driver,By.CSS_SELECTOR,'#tabbar > nav > a:nth-child(4)')
-        
-        # 获取聊天列表 #userlist > div > div.contacts__users.js-im-users
-        elements = wait_for_all_elements(driver,By.CSS_SELECTOR,"#userlist > div > div.contacts__users.js-im-users > div")
-        for item in elements:
+    while True:
+        try: 
+            for i in range(5):
+                print("....")
+                wait_for_click(driver,By.CSS_SELECTOR,'#mm_cc > div.encounters-card__inner > section > div > div.big-photo__actions.js-profile-actions-container.js-core-events-container > div > div.encounters-actions__main-items.js-profile-header-buttons > div.encounters-actions__item.encounters-actions__item--yes > button')
+                time.sleep(3.5)   
+            # element = wait_for_visibility(driver,By.CSS_SELECTOR,"#tabbar > nav > a:nth-child(4) > div.sidebar-menu__item-mark > span")     
+            # if element:
+            # numberStr = element.text or '0'
+            # number = int(numberStr)
+            # print("element:",number)
+            # 准备聊天
+            wait_for_click(driver,By.CSS_SELECTOR,'#tabbar > nav > a:nth-child(4)')
             
-            unread = item.find_element(By.CSS_SELECTOR,"div.contact-card__image > div > div:nth-child(2)")
-            print(f'是否显示{unread.is_displayed()}')
-            if unread and unread.is_displayed():
-                print(f'{item.text}')
-                print(f'存在未读信息')
-                item.click()
-                time.sleep(5)
-        # else:
-        #     print("暂无信息")
-    except:
-        print('没有该元素...')        
-        
-
-    time.sleep(3600)
+            # 获取聊天列表 #userlist > div > div.contacts__users.js-im-users
+            elements = wait_for_all_elements(driver,By.CSS_SELECTOR,"#userlist > div > div.contacts__users.js-im-users > div")
+            for item in elements:
+                unread = item.find_element(By.CSS_SELECTOR,"div.contact-card__image > div > div:nth-child(2)")
+                print(f'是否显示{unread.is_displayed()}')
+                if unread and unread.is_displayed():
+                    print(f'{item.text}')
+                    print(f'存在未读信息')
+                    item.click()
+                    time.sleep(5)
+            # else:
+            #     print("暂无信息")
+            wait_for_click(driver,By.XPATH,'//*[@id="tabbar"]/nav/a[1]')
+        except:
+            print('没有该元素...')     
+        # 恢复
+        #        
+        time.sleep(36)
     
 
 
