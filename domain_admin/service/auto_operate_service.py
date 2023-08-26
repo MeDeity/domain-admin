@@ -150,7 +150,7 @@ def start():
         number = int(numberStr)
         print("element:",number)
         # 准备聊天
-        wait_for_click(driver,By.CSS_SELECTOR,'//*[@id="tabbar"]/nav/a[3]')
+        wait_for_click(driver,By.CSS_SELECTOR,'#tabbar > nav > a:nth-child(4)')
         
 
     
