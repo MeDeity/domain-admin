@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+from __future__ import print_function, unicode_literals, absolute_import, division
+
+import six
+from flask import request, Response
 from peewee import DoesNotExist, IntegrityError
 
 from domain_admin.log import logger
@@ -11,28 +15,32 @@ from domain_admin.utils.flask_ext.app_exception import AppException
 def error_handler(e):
     """
     全局错误处理
-    :param e:
+    :param e: Exception
     :return:
     """
-    # traceback.print_exc()
+
     logger.error(traceback.format_exc())
 
-    code = -1
+    if request.path.startswith('/api'):
 
-    if isinstance(e, KeyError):
-        msg = '参数缺失' + str(e)
+        code = -1
 
-    elif isinstance(e, DoesNotExist):
-        msg = '数据不存在'
+        if isinstance(e, KeyError):
+            msg = '参数缺失' + str(e)
 
-    elif isinstance(e, IntegrityError):
-        msg = '数据已存在'
+        elif isinstance(e, DoesNotExist):
+            msg = '数据不存在'
 
-    elif isinstance(e, AppException):
-        msg = e.message
-        code = e.code
+        elif isinstance(e, IntegrityError):
+            msg = '数据已存在'
 
+        elif isinstance(e, AppException):
+            msg = e.get_message()
+            code = e.get_code()
+
+        else:
+            msg = six.text_type(e)
+
+        return ApiResult.error(msg=msg, code=code)
     else:
-        msg = str(e)
-
-    return ApiResult.error(msg=msg, code=code)
+        return Response("Internal Server Error: {}".format(e.message), status=500)

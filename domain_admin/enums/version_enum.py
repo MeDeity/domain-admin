@@ -3,6 +3,7 @@
 @File    : version_enum.py
 @Date    : 2023-02-06
 """
+from __future__ import print_function, unicode_literals, absolute_import, division
 
 
 class VersionEnum(object):
@@ -74,3 +75,58 @@ class VersionEnum(object):
 
     Version_140_alpha = '1.4.0-alpha'
     Version_140 = '1.4.0'
+    Version_141 = '1.4.1'
+    Version_142 = '1.4.2'
+    Version_143 = '1.4.3'
+    Version_144 = '1.4.4'
+    Version_145 = '1.4.5'
+    Version_146 = '1.4.6'
+
+    Version_147 = '1.4.7'
+    Version_148 = '1.4.8'
+    Version_149 = '1.4.9'
+    Version_1410 = '1.4.10'
+    Version_1411 = '1.4.11'
+    Version_1412 = '1.4.12'
+    Version_1413 = '1.4.13'
+    Version_1414 = '1.4.14'
+
+    Version_1415 = '1.4.15'
+    Version_1416 = '1.4.16'
+    Version_1417 = '1.4.17'
+    Version_1418 = '1.4.18'
+    Version_1419 = '1.4.19'
+    Version_1420 = '1.4.20'
+    Version_1421 = '1.4.21'
+    Version_1422 = '1.4.22'
+    Version_1423 = '1.4.23'
+
+    Version_1424 = '1.4.24'
+    Version_1425 = '1.4.25'
+    Version_1426 = '1.4.26'
+    Version_1427 = '1.4.27'
+    Version_1428 = '1.4.28'
+    Version_1429 = '1.4.29'
+    Version_1430 = '1.4.30'
+    Version_1431 = '1.4.31'
+    Version_1432 = '1.4.32'
+    Version_1433 = '1.4.33'
+    Version_1434 = '1.4.34'
+    Version_1435 = '1.4.35'
+    Version_1436 = '1.4.36'
+    Version_150 = '1.5.0'
+    Version_151 = '1.5.1'
+    Version_152 = '1.5.2'
+
+    Version_153 = '1.5.3'
+    Version_154 = '1.5.4'
+    Version_155 = '1.5.5'
+    Version_156 = '1.5.6'
+    Version_157 = '1.5.7'
+    Version_158 = '1.5.8'
+    Version_159 = '1.5.9'
+
+    Version_1510 = '1.5.10'
+    Version_1511 = '1.5.11'
+    Version_1512 = '1.5.12'
+    Version_1513 = '1.5.13'

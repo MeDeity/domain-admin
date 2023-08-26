@@ -2,8 +2,10 @@
 """
 @File    : api.py
 @Date    : 2023-03-08
-"""
 
+企业微信开放API接口
+"""
+from __future__ import print_function, unicode_literals, absolute_import, division
 import requests
 
 
@@ -38,7 +40,7 @@ def send_message(access_token, body):
     https://developer.work.weixin.qq.com/document/path/90236
 
     :param access_token:
-    :param data: 消息体
+    :param body: 消息体
     :return:
 
     {

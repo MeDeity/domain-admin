@@ -2,101 +2,36 @@
 """
 domain_service.py
 """
-import time
-import traceback
-import warnings
-from datetime import datetime
-from typing import List
+from __future__ import print_function, unicode_literals, absolute_import, division
 
-from peewee import chunked
+import io
+import traceback
+from datetime import datetime
+
+from peewee import chunked, fn
 from playhouse.shortcuts import model_to_dict
 
+from domain_admin.enums.role_enum import RoleEnum
 from domain_admin.log import logger
 from domain_admin.model.address_model import AddressModel
+from domain_admin.model.domain_info_model import DomainInfoModel
 from domain_admin.model.domain_model import DomainModel
 from domain_admin.model.group_model import GroupModel
-from domain_admin.model.log_scheduler_model import LogSchedulerModel
+from domain_admin.model.group_user_model import GroupUserModel
 from domain_admin.model.user_model import UserModel
-from domain_admin.service import email_service, render_service, global_data_service, cache_domain_info_service
-from domain_admin.service import file_service
-from domain_admin.service import notify_service
-from domain_admin.service import system_service
-from domain_admin.utils import datetime_util, cert_util, whois_util, file_util, time_util
+from domain_admin.service import file_service, async_task_service
+from domain_admin.service import render_service, group_service
+from domain_admin.utils import datetime_util, cert_util
 from domain_admin.utils import domain_util
-from domain_admin.utils.cert_util import cert_common, cert_socket_v2
-from domain_admin.utils.flask_ext.app_exception import AppException, ForbiddenAppException
+from domain_admin.utils.cert_util import cert_socket_v2, cert_openssl_v2
+from domain_admin.utils.flask_ext.app_exception import ForbiddenAppException
+from domain_admin.utils.open_api import crtsh_api
 
 
-def update_domain_info(domain_row: DomainModel):
-    """
-    更新域名信息
-    :param row:
-    :return:
-    """
-    # logger.info("%s", model_to_dict(domain_row))
-
-    # 获取域名信息
-    domain_info = None
-
-    err = ''
-
-    try:
-        domain_info = cache_domain_info_service.get_domain_info(domain_row.domain)
-    except Exception as e:
-        err = e.__str__()
-        pass
-
-    update_data = {
-        'domain_start_time': None,
-        "domain_expire_time": None,
-        'domain_expire_days': 0,
-    }
-
-    if domain_info:
-        update_data = {
-            'domain_start_time': domain_info.domain_start_time,
-            "domain_expire_time": domain_info.domain_expire_time,
-            'domain_expire_days': domain_info.domain_expire_days,
-        }
-
-    DomainModel.update(
-        **update_data,
-        domain_check_time=datetime_util.get_datetime(),
-        update_time=datetime_util.get_datetime(),
-    ).where(
-        DomainModel.id == domain_row.id
-    ).execute()
-
-    return err
-
-
-def update_ip_info(row: DomainModel):
+def update_domain_host_list(domain_row):
     """
     更新ip信息
-    :param row:
-    :return:
-    """
-    # 获取ip地址
-    domain_ip = ''
-
-    try:
-        domain_ip = cert_common.get_domain_ip(row.domain)
-    except Exception as e:
-        pass
-
-    DomainModel.update(
-        ip=domain_ip,
-        ip_check_time=datetime_util.get_datetime(),
-        update_time=datetime_util.get_datetime(),
-    ).where(
-        DomainModel.id == row.id
-    ).execute()
-
-
-def update_domain_host_list(domain_row: DomainModel):
-    """
-    更新ip信息
-    :param row:
+    :param domain_row: DomainModel
     :return:
     @since v1.2.24
     """
@@ -108,7 +43,7 @@ def update_domain_host_list(domain_row: DomainModel):
             port=domain_row.port
         )
     except Exception as e:
-        pass
+        logger.error(traceback.format_exc())
 
     lst = [
         {
@@ -121,9 +56,10 @@ def update_domain_host_list(domain_row: DomainModel):
     AddressModel.insert_many(lst).on_conflict_ignore().execute()
 
 
-def update_domain_address_list_cert(domain_row: DomainModel):
+def update_domain_address_list_cert(domain_row):
     """
     更新证书信息
+    :param domain_row: DomainModel
     :return:
     """
     # logger.info("%s", model_to_dict(domain_row))
@@ -153,7 +89,7 @@ def update_address_row_info(address_row, domain_row):
 
     err = ''
     try:
-        cert_info = cert_socket_v2.get_ssl_cert_info(
+        cert_info = cert_openssl_v2.get_ssl_cert_by_openssl(
             domain=domain_row.domain,
             host=address_row.host,
             port=domain_row.port
@@ -161,6 +97,8 @@ def update_address_row_info(address_row, domain_row):
     except Exception as e:
         err = e.__str__()
         logger.error(traceback.format_exc())
+
+    logger.info(cert_info)
 
     address = AddressModel()
     address.ssl_start_time = cert_info.get('start_date')
@@ -179,10 +117,10 @@ def update_address_row_info(address_row, domain_row):
     return err
 
 
-def update_address_row_info_with_sync_domain_row(address_id: int):
+def update_address_row_info_with_sync_domain_row(address_id):
     """
     更新主机信息并同步到与名表
-    :param address_id:
+    :param address_id: int
     :return:
     """
     address_row = AddressModel.get_by_id(address_id)
@@ -194,9 +132,10 @@ def update_address_row_info_with_sync_domain_row(address_id: int):
     sync_address_info_to_domain_info(domain_row)
 
 
-def sync_address_info_to_domain_info(domain_row: DomainModel):
+def sync_address_info_to_domain_info(domain_row):
     """
     同步主机信息到域名信息表
+    :param domain_row: DomainModel
     :return:
     """
     first_address_row = AddressModel.select().where(
@@ -226,39 +165,10 @@ def sync_address_info_to_domain_info(domain_row: DomainModel):
     ).execute()
 
 
-def update_cert_info(row: DomainModel):
-    """
-    更新证书信息
-    :param row:
-    :return:
-    """
-    # 获取证书信息
-    cert_info = {}
-
-    try:
-        cert_info = get_cert_info(row.domain)
-    except Exception as e:
-        pass
-
-    DomainModel.update(
-        start_time=cert_info.get('start_date'),
-        expire_time=cert_info.get('expire_date'),
-        expire_days=cert_info.get('expire_days', 0),
-        total_days=cert_info.get('total_days', 0),
-        # ip=cert_info.get('ip', ''),
-        connect_status=cert_info.get('connect_status'),
-        # detail_raw="",
-        check_time=datetime_util.get_datetime(),
-        update_time=datetime_util.get_datetime(),
-    ).where(
-        DomainModel.id == row.id
-    ).execute()
-
-
-def update_domain_row(domain_row: DomainModel):
+def update_domain_row(domain_row):
     """
     更新域名相关数据
-    :param domain_row:
+    :param domain_row: DomainModel
     :return:
     """
     # fix old data update root domain
@@ -282,7 +192,11 @@ def update_domain_row(domain_row: DomainModel):
     update_domain_address_list_cert(domain_row)
 
 
-def get_cert_info(domain: str):
+def get_cert_info(domain):
+    """
+    :param domain: str
+    :return:
+    """
     now = datetime.now()
     info = {}
     expire_days = 0
@@ -317,52 +231,6 @@ def get_cert_info(domain: str):
     }
 
 
-def get_domain_info(domain: str):
-    """
-    获取域名注册信息
-    :param domain: 域名
-    :param cache: 查询缓存字典
-    :return:
-    """
-    warnings.warn("use cache_domain_info_service.get_domain_info", DeprecationWarning)
-
-    # cache = global_data_service.get_value('update_domain_list_info_cache')
-
-    now = datetime.now()
-
-    # 获取域名信息
-    domain_info = {}
-    domain_expire_days = 0
-
-    # 解析出域名和顶级后缀
-    extract_result = domain_util.extract_domain(domain)
-    domain_and_suffix = '.'.join([extract_result.domain, extract_result.suffix])
-
-    # if cache:
-    #     domain_info = cache.get(domain_and_suffix)
-
-    if not domain_info:
-        try:
-            domain_info = whois_util.get_domain_info(domain_and_suffix)
-            # if cache:
-            #     cache[domain_and_suffix] = domain_info
-
-        except Exception:
-            logger.error(traceback.format_exc())
-
-    domain_start_time = domain_info.get('start_time')
-    domain_expire_time = domain_info.get('expire_time')
-
-    if domain_expire_time:
-        domain_expire_days = (domain_expire_time - now).days
-
-    return {
-        'start_time': domain_start_time,
-        'expire_time': domain_expire_time,
-        'expire_days': domain_expire_days
-    }
-
-
 def update_all_domain_cert_info():
     """
     更新所有域名信息
@@ -373,9 +241,13 @@ def update_all_domain_cert_info():
     ).order_by(DomainModel.expire_days.asc())
 
     for row in rows:
-        update_domain_row(row)
+        try:
+            update_domain_row(row)
+        except Exception as e:
+            logger.error(traceback.format_exc())
 
 
+@async_task_service.async_task_decorator("更新证书信息")
 def update_all_domain_cert_info_of_user(user_id):
     """
     更新用户的所有证书信息
@@ -435,85 +307,6 @@ def get_domain_info_list(user_id=None):
     return lst
 
 
-def check_domain_cert(user_id):
-    """
-    查询域名证书到期情况
-    :return:
-    """
-    user_row = UserModel.get_by_id(user_id)
-
-    # lst = get_domain_info_list(user_id)
-
-    rows = DomainModel.select().where(
-        DomainModel.user_id == user_id,
-        DomainModel.is_monitor == True,
-        DomainModel.expire_days <= user_row.before_expire_days
-    ).order_by(
-        DomainModel.expire_days.asc(),
-        DomainModel.id.desc()
-    )
-
-    lst = [model_to_dict(
-        model=row,
-        extra_attrs=[
-            'start_date',
-            'expire_date',
-            'real_time_expire_days',
-        ]
-    ) for row in rows]
-
-    if len(lst) > 0:
-        notify_user(user_id, lst)
-        # send_domain_list_email(user_id)
-
-
-def update_and_check_all_cert():
-    """
-    更新并检查所域名信息和证书信息
-    :return:
-    """
-
-    # 更新全部域名证书信息
-    update_all_domain_cert_info()
-
-    # 全员检查并发送用户通知
-    # if status:
-    user_rows = UserModel.select()
-
-    for row in user_rows:
-        # 内层捕获单个用户发送错误
-        check_domain_cert(row.id)
-
-
-def send_domain_list_email(user_id, rows: List[DomainModel]):
-    """
-    发送域名信息
-    :param user_id:
-    :return:
-    """
-
-    # 配置检查
-    config = system_service.get_system_config()
-
-    system_service.check_email_config(config)
-
-    email_list = notify_service.get_notify_email_list_of_user(user_id)
-
-    if not email_list:
-        raise AppException('收件邮箱未设置')
-
-    # lst = get_domain_info_list(user_id)
-
-    content = render_service.render_template('cert-email.html', {'list': rows})
-
-    email_service.send_email(
-        subject='[Domain Admin]证书过期提醒',
-        content=content,
-        to_addresses=email_list,
-        content_type='html'
-    )
-
-
 def check_permission_and_get_row(domain_id, user_id):
     """
     权限检查
@@ -528,10 +321,50 @@ def check_permission_and_get_row(domain_id, user_id):
     return row
 
 
+@async_task_service.async_task_decorator("自动导入子域名证书")
+def auto_import_from_domain(root_domain, group_id=0, user_id=0):
+    """
+    自动导入顶级域名下包含的子域名到证书列表
+    :param root_domain: str
+    :param group_id: int
+    :param user_id: int
+    :return:
+    """
+    lst = crtsh_api.search(root_domain)
+
+    domain_set = list(set([domain['common_name'] for domain in lst]))
+
+    data = [
+        {
+            'domain': domain,
+            'root_domain': root_domain,
+            'port': 443,
+            'alias': '',
+            'user_id': user_id,
+            'group_id': group_id,
+        } for domain in domain_set
+    ]
+
+    for batch in chunked(data, 500):
+        DomainModel.insert_many(batch).on_conflict_ignore().execute()
+
+    # 更新插入的证书
+    rows = DomainModel.select().where(
+        DomainModel.domain.in_(domain_set)
+    )
+
+    for row in rows:
+        update_domain_row(row)
+
+
 def add_domain_from_file(filename, user_id):
     logger.info('user_id: %s, filename: %s', user_id, filename)
 
-    lst = domain_util.parse_domain_from_file(filename)
+    lst = list(domain_util.parse_domain_from_file(filename))
+
+    # 导入分组
+    group_name_list = [item.group_name for item in lst]
+    group_map = group_service.get_or_create_group_map(group_name_list, user_id)
 
     lst = [
         {
@@ -540,6 +373,7 @@ def add_domain_from_file(filename, user_id):
             'port': item.port,
             'alias': item.alias,
             'user_id': user_id,
+            'group_id': group_map.get(item.group_name, 0),
         } for item in lst
     ]
 
@@ -547,66 +381,209 @@ def add_domain_from_file(filename, user_id):
         DomainModel.insert_many(batch).on_conflict_ignore().execute()
 
 
-def export_domain_to_file(user_id):
+def export_domain_to_file(rows):
     """
     导出域名到文件
-    :param user_id:
+    :param rows:
     :return:
     """
-    # 域名数据
-    rows = DomainModel.select().where(
-        DomainModel.user_id == user_id
-    ).order_by(
-        DomainModel.expire_days.asc(),
-        DomainModel.id.desc(),
-    )
+    # # 域名数据
+    # rows = DomainModel.select().where(
+    #     DomainModel.user_id == user_id
+    # ).order_by(
+    #     DomainModel.expire_days.asc(),
+    #     DomainModel.id.desc(),
+    # )
+    #
+    # #  分组数据
+    # group_rows = GroupModel.select().where(
+    #     GroupModel.user_id == user_id
+    # )
+    #
+    # group_map = {row.id: row.name for row in group_rows}
+    #
+    # lst = []
+    # for row in list(rows):
+    #     row.group_name = group_map.get(row.group_id, '')
+    #     lst.append(row)
 
-    #  分组数据
-    group_rows = GroupModel.select().where(
-        GroupModel.user_id == user_id
-    )
-
-    group_map = {row.id: row.name for row in group_rows}
-
-    lst = []
-    for row in list(rows):
-        row.group_name = group_map.get(row.group_id, '')
-        lst.append(row)
-
-    content = render_service.render_template('cert-export.csv', {'list': lst})
+    content = render_service.render_template('cert-export.csv', {'list': rows})
 
     filename = datetime.now().strftime("cert_%Y%m%d%H%M%S") + '.csv'
 
     temp_filename = file_service.resolve_temp_file(filename)
     # print(temp_filename)
-    with open(temp_filename, 'w') as f:
+    with io.open(temp_filename, 'w', encoding='utf-8') as f:
         f.write(content)
 
     return filename
 
 
-def notify_user(user_id, rows: List[DomainModel]):
+def load_domain_expire_days(lst):
     """
-    尝试通知用户
-    :param user_id:
+    加载域名过期时间字段 Number or None
+    :param lst: List[DomainModel dict]
     :return:
     """
-    try:
-        send_domain_list_email(user_id, rows)
-    except Exception as e:
-        logger.error(traceback.format_exc())
 
-    try:
-        notify_service.notify_webhook_of_user(user_id)
-    except Exception as e:
-        logger.error(traceback.format_exc())
+    root_domains = [row['root_domain'] for row in lst]
+
+    domain_info_rows = DomainInfoModel.select().where(
+        DomainInfoModel.domain.in_(root_domains)
+    )
+
+    domain_info_map = {
+        row.domain: row.real_domain_expire_days
+        for row in domain_info_rows
+    }
+
+    for row in lst:
+        row['domain_expire_days'] = domain_info_map.get(row['root_domain'])
+
+    return lst
 
 
-def update_and_check_domain_cert(user_id):
-    # 先更新，再检查
-    # update_all_domain_cert_info_of_user(user_id)
+def load_address_count(lst):
+    """
+    加载主机数量字段
+    :param lst: List
+    :return:
+    """
+    row_ids = [row['id'] for row in lst]
 
-    check_domain_cert(user_id)
+    # 主机数量
+    address_groups = AddressModel.select(
+        AddressModel.domain_id,
+        fn.COUNT(AddressModel.id).alias('count')
+    ).where(
+        AddressModel.domain_id.in_(row_ids)
+    ).group_by(AddressModel.domain_id)
 
-    # key = f'check_domain_status:{user_id}'
-    # global_data_service.set_value(key, False)
+    address_group_map = {
+        str(row.domain_id): row.count
+        for row in address_groups
+    }
+
+    for row in lst:
+        row['address_count'] = address_group_map.get(str(row['id']), 0)
+
+    return lst
+
+
+def get_domain_list_query(keyword, group_id, group_ids, expire_days, user_id, role):
+
+    user_group_ids = None
+
+    if role == RoleEnum.ADMIN:
+        pass
+
+    else:
+        # 所在分组
+        group_user_rows = GroupUserModel.select().where(
+            GroupUserModel.user_id == user_id
+        )
+
+        group_user_list = list(group_user_rows)
+        user_group_ids = [row.group_id for row in group_user_list]
+
+    query = DomainModel.select()
+
+    if isinstance(group_id, int):
+        query = query.where(DomainModel.group_id == group_id)
+
+    if keyword:
+        query = query.where(DomainModel.domain.contains(keyword))
+
+    if group_ids:
+        query = query.where(DomainModel.group_id.in_(group_ids))
+    else:
+        if role == RoleEnum.ADMIN:
+            pass
+
+        elif user_group_ids:
+            query = query.where(
+                (DomainModel.user_id == user_id)
+                | (DomainModel.group_id.in_(user_group_ids))
+            )
+        else:
+            query = query.where(DomainModel.user_id == user_id)
+
+    if expire_days is not None:
+        if expire_days[0] is None:
+            query = query.where(DomainModel.expire_days <= expire_days[1])
+        elif expire_days[1] is None:
+            query = query.where(DomainModel.expire_days >= expire_days[0])
+        else:
+            query = query.where(DomainModel.expire_days.between(expire_days[0], expire_days[1]))
+
+    return query
+
+
+def get_domain_ordering(order_prop='expire_days', order_type='ascending'):
+    ordering = []
+
+    # order by expire_days
+    if order_prop == 'expire_days':
+        if order_type == 'descending':
+            ordering.append(DomainModel.expire_time.desc())
+        else:
+            ordering.append(DomainModel.expire_time.asc())
+
+    # order by connect_status
+    elif order_prop == 'connect_status':
+        if order_type == 'descending':
+            ordering.append(DomainModel.connect_status.desc())
+        else:
+            ordering.append(DomainModel.connect_status.asc())
+
+    # order by domain
+    elif order_prop == 'domain':
+        if order_type == 'descending':
+            ordering.append(DomainModel.domain.desc())
+        else:
+            ordering.append(DomainModel.domain.asc())
+
+    # order by group_id
+    elif order_prop == 'group_name':
+        if order_type == 'descending':
+            ordering.append(DomainModel.group_id.desc())
+        else:
+            ordering.append(DomainModel.group_id.asc())
+
+    # order by port
+    elif order_prop == 'port':
+        if order_type == 'descending':
+            ordering.append(DomainModel.port.desc())
+        else:
+            ordering.append(DomainModel.port.asc())
+
+    # order by update_time
+    elif order_prop == 'update_time':
+        if order_type == 'descending':
+            ordering.append(DomainModel.update_time.desc())
+        else:
+            ordering.append(DomainModel.update_time.asc())
+
+    # order by domain_expire_monitor
+    elif order_prop == 'domain_expire_monitor':
+        if order_type == 'descending':
+            ordering.append(DomainModel.domain_expire_monitor.desc())
+        else:
+            ordering.append(DomainModel.domain_expire_monitor.asc())
+
+    # order by auto_update
+    elif order_prop == 'auto_update':
+        if order_type == 'descending':
+            ordering.append(DomainModel.auto_update.desc())
+        else:
+            ordering.append(DomainModel.auto_update.asc())
+    # order by  is_monitor
+    elif order_prop == 'is_monitor':
+        if order_type == 'descending':
+            ordering.append(DomainModel.is_monitor.desc())
+        else:
+            ordering.append(DomainModel.is_monitor.asc())
+
+    ordering.append(DomainModel.id.desc())
+
+    return ordering

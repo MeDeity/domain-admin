@@ -3,7 +3,7 @@
 @File    : config_key_enum.py
 @Date    : 2023-06-16
 """
-
+from __future__ import print_function, unicode_literals, absolute_import, division
 
 class ConfigKeyEnum(object):
     """
@@ -25,6 +25,7 @@ class ConfigKeyEnum(object):
     MAIL_PASSWORD = 'mail_password'
 
     # 邮件标题
+    # @Deprecated @since 1.4.4
     MAIL_SUBJECT = 'mail_subject'
 
     # 定时检测时间（crontab 表达式）
@@ -35,3 +36,6 @@ class ConfigKeyEnum(object):
 
     # Token有效期（天）
     TOKEN_EXPIRE_DAYS = 'token_expire_days'
+
+    # prometheus_key
+    PROMETHEUS_KEY = 'prometheus_key'

@@ -2,9 +2,12 @@
 """
 datetime_util.py
 """
+from __future__ import print_function, unicode_literals, absolute_import, division
 import time
 from datetime import datetime
 import math
+import six
+from domain_admin import i18n
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -13,6 +16,24 @@ DATETIME_SHORT_FORMAT = "%Y-%m-%d %H:%M"
 DATE_FORMAT = "%Y-%m-%d"
 
 TIME_FORMAT = "%H:%M:%S"
+
+
+class TimeEnum(object):
+    Second = 1
+    Minute = 60 * Second
+    Hour = 60 * Minute
+    Day = 24 * Hour
+
+
+def get_timestamp(datetime_obj):
+    """
+    fix: Python 2.7 AttributeError: 'datetime.datetime' object has no attribute 'timestamp'
+    ref: https://stackoverflow.com/questions/50650704/attributeerror-datetime-datetime-object-has-no-attribute-timestamp
+
+    :param datetime_obj:
+    :return: int
+    """
+    return int(time.mktime(datetime_obj.timetuple()))
 
 
 def get_datetime():
@@ -59,7 +80,7 @@ def seconds_for_human(seconds):
     """
     second = 1
     minute = second * 60
-    hour = minute * 12
+    hour = minute * 60
     day = hour * 24
 
     lst = []
@@ -76,7 +97,7 @@ def seconds_for_human(seconds):
         minutes, seconds = divmod(seconds, minute)
         lst.append(str(minutes) + 'm')
 
-    if seconds > 0:
+    if seconds >= 0:
         lst.append(str(seconds) + 's')
 
     return ' '.join(lst)
@@ -105,9 +126,9 @@ def time_for_human(time_value):
     day_8 = day * 8
 
     if isinstance(time_value, datetime):
-        time_value = time_value.timestamp()
+        time_value = get_timestamp(time_value)
 
-    if isinstance(time_value, str):
+    if isinstance(time_value, six.text_type):
         time_value = time.mktime(time.strptime(time_value, DATETIME_FORMAT))
 
     now_time = time.time()
@@ -115,26 +136,27 @@ def time_for_human(time_value):
     duration = now_time - time_value
 
     if duration < minute:
-        return '刚刚'
+        return i18n.translate('刚刚')
     elif duration < hour:
-        return str(math.floor(duration / minute)) + '分钟前'
+        return six.text_type(int(duration / minute)) + i18n.translate('分钟前')
     elif duration < day:
-        return str(math.floor(duration / hour)) + '小时前'
+        return six.text_type(int(duration / hour)) + i18n.translate('小时前')
     elif duration < day_8:
-        return str(math.floor(duration / day)) + '天前'
+        return six.text_type(int(duration / day)) + i18n.translate('天前')
     else:
         return time.strftime(DATE_FORMAT, time.localtime(time_value))
 
 
-if __name__ == '__main__':
-    print(time_for_human(1665381270))
-    # 2天前
-
-    print(time_for_human(datetime.now()))
-    # 刚刚
-
-    print(time_for_human(time.time() - 100))
-    # 1分钟前
-
-    print(time_for_human('2022-10-10 13:33:11'))
-    # 2天前
+def get_diff_time(start_date, end_date):
+    """
+    获取两个时间对象的时间差秒数
+    :param start_date:
+    :param end_date:
+    :return:
+    """
+    if start_date and end_date \
+            and isinstance(start_date, datetime) \
+            and isinstance(end_date, datetime):
+        return get_timestamp(end_date) - get_timestamp(start_date)
+    else:
+        return 0

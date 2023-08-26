@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
+from __future__ import print_function, unicode_literals, absolute_import, division
 
-from flask import request, make_response, send_file, current_app
+
+from flask import request, make_response, send_file
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
-from werkzeug.utils import safe_join
 
+from domain_admin import compat
 from domain_admin.config import TEMP_DIR
 from domain_admin.model.base_model import db
 from domain_admin.model.database import init_database
@@ -51,6 +53,15 @@ def index():
     return send_file('public/index.html')
 
 
+@app.get('/m/')
+def mobile():
+    """
+    移动端首页
+    :return:
+    """
+    return send_file('public/m/index.html')
+
+
 @app.get('/test')
 def app_hello():
     """
@@ -63,7 +74,7 @@ def app_hello():
 @app.get('/temp/<path:filename>')
 def temp(filename):
     """临时文件"""
-    return send_file(safe_join(TEMP_DIR, filename))
+    return send_file(compat.safe_join(TEMP_DIR, filename))
 
 
 def init_app(flask_app):
@@ -72,6 +83,7 @@ def init_app(flask_app):
     :param flask_app:
     :return:
     """
+
     # 注册路由
     register.register_app_routers(flask_app, api_map.routes)
 

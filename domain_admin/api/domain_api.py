@@ -2,22 +2,32 @@
 """
 由于历史原因，domain指代 SSL证书的域名
 """
+from __future__ import print_function, unicode_literals, absolute_import, division
+
+from operator import itemgetter
 
 from flask import request, g
 from playhouse.shortcuts import model_to_dict, fn
 
-from domain_admin.log import logger
+from domain_admin.enums.operation_enum import OperationEnum
+from domain_admin.enums.role_enum import RoleEnum
 from domain_admin.model.address_model import AddressModel
 from domain_admin.model.domain_info_model import DomainInfoModel
 from domain_admin.model.domain_model import DomainModel
-from domain_admin.service import async_task_service, domain_info_service
-from domain_admin.service import domain_service, global_data_service
+from domain_admin.model.group_model import GroupModel
+from domain_admin.model.group_user_model import GroupUserModel
+from domain_admin.service import async_task_service, domain_info_service, group_service, operation_service
+from domain_admin.service import domain_service
 from domain_admin.service import file_service
 from domain_admin.utils import datetime_util, domain_util
 from domain_admin.utils.cert_util import cert_consts
 from domain_admin.utils.flask_ext.app_exception import AppException
 
 
+@operation_service.operation_log_decorator(
+    model=DomainModel,
+    operation_type_id=OperationEnum.CREATE
+)
 def add_domain():
     """
     添加域名
@@ -31,6 +41,9 @@ def add_domain():
     alias = request.json.get('alias') or ''
     group_id = request.json.get('group_id') or 0
     is_dynamic_host = request.json.get('is_dynamic_host', False)
+    start_time = request.json.get('start_time')
+    expire_time = request.json.get('expire_time')
+    auto_update = request.json.get('auto_update', True)
     port = request.json.get('port') or cert_consts.SSL_DEFAULT_PORT
 
     data = {
@@ -42,62 +55,41 @@ def add_domain():
         'alias': alias,
         'group_id': group_id,
         'is_dynamic_host': is_dynamic_host,
+        'start_time': start_time,
+        'expire_time': expire_time,
+        'auto_update': auto_update,
     }
 
     row = DomainModel.create(**data)
 
-    domain_service.update_domain_row(row)
+    if auto_update:
+        domain_service.update_domain_row(row)
 
     # 顺带添加到域名监测列表
-    first_domain_info_row = DomainInfoModel.select(
-        DomainInfoModel.id
-    ).where(
-        DomainInfoModel.domain == data['root_domain'],
-        DomainInfoModel.user_id == current_user_id
-    ).first()
+    if not domain_util.is_ipv4(domain):
 
-    if not first_domain_info_row:
-        domain_info_service.add_domain_info(
-            domain=domain_util.get_root_domain(domain),
-            comment=alias,
-            group_id=group_id,
-            user_id=current_user_id,
-        )
+        first_domain_info_row = DomainInfoModel.select(
+            DomainInfoModel.id
+        ).where(
+            DomainInfoModel.domain == data['root_domain'],
+            DomainInfoModel.user_id == current_user_id
+        ).first()
+
+        if not first_domain_info_row:
+            domain_info_service.add_domain_info(
+                domain=domain_util.get_root_domain(domain),
+                comment=alias,
+                group_id=group_id,
+                user_id=current_user_id,
+            )
 
     return {'id': row.id}
 
 
-def update_domain_setting():
-    """
-    更新域名配置信息
-    @since v1.2.13
-    :return:
-    """
-    current_user_id = g.user_id
-
-    domain_id = request.json['domain_id']
-
-    data = {
-        # 域名信息
-        'domain_start_time': request.json.get('domain_start_time'),
-        'domain_expire_time': request.json.get('domain_expire_time'),
-        'domain_auto_update': request.json.get('domain_auto_update'),
-        'domain_expire_monitor': request.json.get('domain_expire_monitor'),
-
-        # 证书信息
-        # 'start_time': request.json.get('start_time'),
-        # 'expire_time': request.json.get('expire_time'),
-        # 'auto_update': request.json.get('auto_update'),
-
-        'domain_check_time': datetime_util.get_datetime(),
-        'update_time': datetime_util.get_datetime()
-    }
-
-    DomainModel.update(data).where(
-        DomainModel.id == domain_id
-    ).execute()
-
-
+@operation_service.operation_log_decorator(
+    model=DomainModel,
+    operation_type_id=OperationEnum.UPDATE
+)
 def update_domain_by_id():
     """
     更新数据
@@ -107,21 +99,27 @@ def update_domain_by_id():
     current_user_id = g.user_id
 
     data = request.json
-    domain_id = data.pop('id')
+    domain_id = request.json['id']
 
     # domain_service.check_permission_and_get_row(domain_id, current_user_id)
 
     data['update_time'] = datetime_util.get_datetime()
     data['group_id'] = data.get('group_id') or 0
 
+    before_domain_row = DomainModel.get_by_id(domain_id)
+
     DomainModel.update(data).where(
         DomainModel.id == domain_id
     ).execute()
 
-    domain_row = DomainModel.get_by_id(domain_id)
+    after_domain_row = DomainModel.get_by_id(domain_id)
 
-    if domain_row.auto_update:
-        domain_service.update_domain_row(domain_row)
+    # 域名和端口没改变，就不更新
+    if before_domain_row.domain == after_domain_row.domain and before_domain_row.port == after_domain_row.port:
+        pass
+    else:
+        if after_domain_row.auto_update:
+            domain_service.update_domain_row(after_domain_row)
 
 
 def update_domain_expire_monitor_by_id():
@@ -144,6 +142,11 @@ def update_domain_expire_monitor_by_id():
     ).execute()
 
 
+@operation_service.operation_log_decorator(
+    model=DomainModel,
+    operation_type_id=OperationEnum.UPDATE,
+    primary_key='domain_id'
+)
 def update_domain_field_by_id():
     """
     更新单个数据
@@ -168,6 +171,11 @@ def update_domain_field_by_id():
     ).execute()
 
 
+@operation_service.operation_log_decorator(
+    model=DomainModel,
+    operation_type_id=OperationEnum.DELETE,
+    primary_key='id'
+)
 def delete_domain_by_id():
     """
     删除
@@ -190,6 +198,11 @@ def delete_domain_by_id():
     ).execute()
 
 
+@operation_service.operation_log_decorator(
+    model=DomainModel,
+    operation_type_id=OperationEnum.BATCH_DELETE,
+    primary_key='ids'
+)
 def delete_domain_by_ids():
     """
     批量删除
@@ -220,14 +233,15 @@ def get_domain_by_id():
 
     domain_id = request.json.get('domain_id') or request.json['id']
 
-    row = domain_service.check_permission_and_get_row(domain_id, current_user_id)
-
+    # row = domain_service.check_permission_and_get_row(domain_id, current_user_id)
+    row = DomainModel.get_by_id(domain_id)
     row = model_to_dict(
         model=row,
         extra_attrs=[
             'real_time_expire_days',
             'domain_url',
             'update_time_label',
+            'expire_status',
         ]
     )
 
@@ -237,6 +251,23 @@ def get_domain_by_id():
     ).count()
 
     row['address_count'] = address_count
+    row['group_name'] = group_service.get_group_name_by_id(row['group_id'])
+
+    if row['user_id'] == current_user_id:
+        has_edit_permission = True
+    else:
+        first_row = GroupUserModel.select().where(
+            GroupUserModel.group_id == row['group_id'],
+            GroupUserModel.user_id == current_user_id,
+            GroupUserModel.has_edit_permission == True
+        ).first()
+
+        if first_row:
+            has_edit_permission = True
+        else:
+            has_edit_permission = False
+
+    row['has_edit_permission'] = has_edit_permission
 
     return row
 
@@ -256,41 +287,9 @@ def update_all_domain_cert_info_of_user():
     :return:
     """
     current_user_id = g.user_id
-    # domain_service.update_all_domain_cert_info_of_user(current_user_id)
-    # 异步更新
-    # key = f'update_domain_status:{current_user_id}'
-    # global_data_service.set_value(key, True)
-    async_task_service.submit_task(fn=domain_service.update_all_domain_cert_info_of_user, user_id=current_user_id)
 
-
-def get_update_domain_status_of_user():
-    """
-    获取域名信息更新状态
-    true：正在更新
-    false：更新完毕
-    :return:
-    """
-    current_user_id = g.user_id
-    key = f'update_domain_status:{current_user_id}'
-
-    return {
-        'status': global_data_service.get_value(key)
-    }
-
-
-def get_check_domain_status_of_user():
-    """
-    获取证书检查状态
-    true：正在更新
-    false：更新完毕
-    :return:
-    """
-    current_user_id = g.user_id
-    key = f'check_domain_status:{current_user_id}'
-
-    return {
-        'status': global_data_service.get_value(key)
-    }
+    domain_service.update_all_domain_cert_info_of_user(user_id=current_user_id)
+    # async_task_service.submit_task(fn=domain_service.update_all_domain_cert_info_of_user, user_id=current_user_id)
 
 
 def update_domain_row_info_by_id():
@@ -308,50 +307,6 @@ def update_domain_row_info_by_id():
     row = DomainModel.get_by_id(domain_id)
 
     domain_service.update_domain_row(row)
-
-
-def send_domain_info_list_email():
-    """
-    发送域名证书信息到邮箱
-    :return:
-    """
-    current_user_id = g.user_id
-
-    rows = DomainModel.select().where(
-        DomainModel.user_id == current_user_id,
-    ).order_by(
-        DomainModel.expire_days.asc(),
-        DomainModel.id.desc()
-    )
-
-    lst = [model_to_dict(
-        model=row,
-        extra_attrs=[
-            'start_date',
-            'expire_date',
-            'real_time_expire_days',
-        ]
-    ) for row in rows]
-
-    domain_service.send_domain_list_email(current_user_id, lst)
-
-
-def check_domain_cert():
-    """
-    检查域名证书信息
-    :return:
-    """
-    current_user_id = g.user_id
-
-    # key = f'check_domain_status:{current_user_id}'
-    # global_data_service.set_value(key, True)
-
-    # # 先更新，再检查
-    # domain_service.update_all_domain_cert_info_of_user(current_user_id)
-    #
-    # domain_service.check_domain_cert(current_user_id)
-    # 异步检查更新
-    async_task_service.submit_task(fn=domain_service.update_and_check_domain_cert, user_id=current_user_id)
 
 
 def get_all_domain_list_of_user():
@@ -394,7 +349,8 @@ def import_domain_from_file():
     # async_task_service.submit_task(fn=domain_service.add_domain_from_file, filename=filename, user_id=current_user_id)
 
     # 异步查询
-    async_task_service.submit_task(fn=domain_service.update_all_domain_cert_info_of_user, user_id=current_user_id)
+    domain_service.update_all_domain_cert_info_of_user(user_id=current_user_id)
+    # async_task_service.submit_task(fn=domain_service.update_all_domain_cert_info_of_user, user_id=current_user_id)
 
 
 def export_domain_file():
@@ -405,9 +361,53 @@ def export_domain_file():
     """
     current_user_id = g.user_id
 
-    filename = domain_service.export_domain_to_file(current_user_id)
+    keyword = request.json.get('keyword')
+    group_id = request.json.get('group_id')
+    group_ids = request.json.get('group_ids')
+    expire_days = request.json.get('expire_days')
+    role = request.json.get('role')
+
+    order_prop = request.json.get('order_prop') or 'expire_days'
+    order_type = request.json.get('order_type') or 'ascending'
+
+
+    params = {
+        'keyword': keyword,
+        'group_id': group_id,
+        'group_ids': group_ids,
+        'expire_days': expire_days,
+        'role': role,
+        'user_id': current_user_id,
+    }
+
+    query = domain_service.get_domain_list_query(**params)
+    ordering = domain_service.get_domain_ordering(order_prop=order_prop, order_type=order_type)
+
+    rows = query.order_by(*ordering)
+
+    # 分组名
+    lst = list(map(lambda m: model_to_dict(
+        model=m,
+        extra_attrs=[
+            'start_date',
+            'expire_date',
+            'expire_days',
+            'create_time_label',
+            'real_time_expire_days',
+            'real_time_ssl_total_days',
+            'real_time_ssl_expire_days',
+            'domain_url',
+            'update_time_label',
+            'expire_status',
+        ]
+    ), rows))
+
+    group_service.load_group_name(lst)
+
+    filename = domain_service.export_domain_to_file(lst)
 
     return {
+        'name': filename,
         'url': file_service.resolve_temp_url(filename)
     }
 
@@ -438,133 +438,155 @@ def get_domain_list():
 
     page = request.json.get('page', 1)
     size = request.json.get('size', 10)
+
     keyword = request.json.get('keyword')
     group_id = request.json.get('group_id')
+    group_ids = request.json.get('group_ids')
+    expire_days = request.json.get('expire_days')
+    role = request.json.get('role')
 
     order_prop = request.json.get('order_prop') or 'expire_days'
     order_type = request.json.get('order_type') or 'ascending'
-    group_ids = request.json.get('group_ids')
-    expire_days = request.json.get('expire_days')
 
-    query = DomainModel.select().where(
-        DomainModel.user_id == current_user_id
-    )
+    # 组权限
+    group_user_permission_map = {}
 
-    if isinstance(group_id, int):
-        query = query.where(DomainModel.group_id == group_id)
+    if role == RoleEnum.ADMIN:
+        pass
 
-    if keyword:
-        query = query.where(DomainModel.domain.contains(keyword))
+    else:
+        # 所在分组
+        group_user_rows = GroupUserModel.select().where(
+            GroupUserModel.user_id == current_user_id
+        )
 
-    if group_ids:
-        query = query.where(DomainModel.group_id.in_(group_ids))
+        group_user_list = list(group_user_rows)
 
-    if expire_days is not None:
-        if expire_days[0] is None:
-            query = query.where(DomainModel.expire_days <= expire_days[1])
-        elif expire_days[1] is None:
-            query = query.where(DomainModel.expire_days >= expire_days[0])
-        else:
-            query = query.where(DomainModel.expire_days.between(expire_days[0], expire_days[1]))
+        # 组员权限
+        group_user_permission_map = {row.group_id: row.has_edit_permission for row in group_user_list}
 
-    ordering = []
-
-    # order by expire_days
-    if order_prop == 'expire_days':
-        if order_type == 'descending':
-            ordering.append(DomainModel.expire_days.desc())
-        else:
-            ordering.append(DomainModel.expire_days.asc())
-
-    # order by connect_status
-    elif order_prop == 'connect_status':
-        if order_type == 'descending':
-            ordering.append(DomainModel.connect_status.desc())
-        else:
-            ordering.append(DomainModel.connect_status.asc())
-
-    # order by domain
-    elif order_prop == 'domain':
-        if order_type == 'descending':
-            ordering.append(DomainModel.domain.desc())
-        else:
-            ordering.append(DomainModel.domain.asc())
-
-    # order by group_id
-    elif order_prop == 'group_name':
-        if order_type == 'descending':
-            ordering.append(DomainModel.group_id.desc())
-        else:
-            ordering.append(DomainModel.group_id.asc())
-
-    # order by port
-    elif order_prop == 'port':
-        if order_type == 'descending':
-            ordering.append(DomainModel.port.desc())
-        else:
-            ordering.append(DomainModel.port.asc())
-
-    # order by update_time
-    elif order_prop == 'update_time':
-        if order_type == 'descending':
-            ordering.append(DomainModel.update_time.desc())
-        else:
-            ordering.append(DomainModel.update_time.asc())
-
-    # order by domain_expire_monitor
-    elif order_prop == 'domain_expire_monitor':
-        if order_type == 'descending':
-            ordering.append(DomainModel.domain_expire_monitor.desc())
-        else:
-            ordering.append(DomainModel.domain_expire_monitor.asc())
-
-    # order by auto_update
-    elif order_prop == 'auto_update':
-        if order_type == 'descending':
-            ordering.append(DomainModel.auto_update.desc())
-        else:
-            ordering.append(DomainModel.auto_update.asc())
-
-    ordering.append(DomainModel.id.desc())
-
-    lst = query.order_by(*ordering).paginate(page, size)
-
-    total = query.count()
-
-    lst = list(map(lambda m: model_to_dict(
-        model=m,
-        extra_attrs=[
-            'expire_days',
-            'create_time_label',
-            'real_time_expire_days',
-            'real_time_ssl_total_days',
-            'real_time_ssl_expire_days',
-            'domain_url',
-            'update_time_label',
-        ]
-    ), lst))
-
-    row_ids = [row['id'] for row in lst]
-
-    # 主机数量
-    address_groups = AddressModel.select(
-        AddressModel.domain_id,
-        fn.COUNT(AddressModel.id).alias('count')
-    ).where(
-        AddressModel.domain_id.in_(row_ids)
-    ).group_by(AddressModel.domain_id)
-
-    address_group_map = {
-        str(row.domain_id): row.count
-        for row in address_groups
+    params = {
+        'keyword': keyword,
+        'group_id': group_id,
+        'group_ids': group_ids,
+        'expire_days': expire_days,
+        'role': role,
+        'user_id': current_user_id,
     }
 
-    for row in lst:
-        row['address_count'] = address_group_map.get(str(row['id']), 0)
+    query = domain_service.get_domain_list_query(**params)
+    ordering = domain_service.get_domain_ordering(order_prop=order_prop, order_type=order_type)
+
+    total = query.count()
+    lst = []
+
+    if total > 0:
+        lst = query.order_by(*ordering).paginate(page, size)
+
+        lst = list(map(lambda m: model_to_dict(
+            model=m,
+            extra_attrs=[
+                'expire_days',
+                'create_time_label',
+                'real_time_expire_days',
+                'real_time_ssl_total_days',
+                'real_time_ssl_expire_days',
+                'domain_url',
+                'update_time_label',
+                'expire_status',
+            ]
+        ), lst))
+
+        # 加载主机数量
+        domain_service.load_address_count(lst)
+
+        # 加载域名过期时间
+        domain_service.load_domain_expire_days(lst)
+
+        # 分组名
+        group_service.load_group_name(lst)
+
+        for row in lst:
+            if role == RoleEnum.ADMIN:
+                has_edit_permission = True
+
+            elif row['user_id'] == current_user_id:
+                has_edit_permission = True
+            else:
+                has_edit_permission = group_user_permission_map.get(row['group_id'], False)
+
+            row['has_edit_permission'] = has_edit_permission
 
     # lst = model_util.list_with_relation_one(lst, 'group', GroupModel)
 
     return {
         'list': lst,
         'total': total
+    }
+
+
+def get_domain_group_filter():
+    """
+    获取证书分组筛选器
+    :return:
+    """
+
+    current_user_id = g.user_id
+
+    # 分组列表数据
+    query = GroupModel.select().where(
+        GroupModel.user_id == current_user_id
+    )
+
+    # 所在分组
+    group_user_rows = GroupUserModel.select().where(
+        GroupUserModel.user_id == current_user_id
+    )
+
+    group_user_list = list(group_user_rows)
+    user_group_ids = [row.group_id for row in group_user_list]
+
+    if user_group_ids:
+        query = query.orwhere(GroupModel.id.in_(user_group_ids))
+
+    total = query.count()
+    lst = []
+    if total > 0:
+        lst = [model_to_dict(row) for row in query]
+        group_ids = [row['id'] for row in lst]
+
+        # 证书分组统计
+        cert_groups = DomainModel.select(
+            DomainModel.group_id,
+            fn.COUNT(DomainModel.id).alias('count')
+        ).where(
+            DomainModel.group_id.in_(group_ids)
+        ).group_by(DomainModel.group_id)
+
+        cert_groups_map = {
+            str(row.group_id): row.count
+            for row in cert_groups
+        }
+
+        for row in lst:
+            row['cert_count'] = cert_groups_map.get(str(row['id']), 0)
+
+            # leader
+            if row['user_id'] == current_user_id:
+                row['is_leader'] = True
+            else:
+                row['is_leader'] = False
+
+        # if cert_groups_map.get('0'):
+        #     lst.append({
+        #         'cert_count': cert_groups_map.get('0'),
+        #         'id': 0,
+        #         'name': '未分组',
+        # })
+
+        lst.sort(key=itemgetter('cert_count'), reverse=True)
+
+    return {
+        'list': lst,
+        'total': len(lst),
     }

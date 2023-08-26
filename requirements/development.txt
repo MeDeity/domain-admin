@@ -1,4 +1,8 @@
 -r production.txt
 
-pytest>=7.2.0
+setuptools
+wheel
+twine
+pytest
 packaging
+gunicorn

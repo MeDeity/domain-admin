@@ -3,22 +3,29 @@
 @File    : util.py
 @Date    : 2023-03-25
 """
+from __future__ import print_function, unicode_literals, absolute_import, division
+
 import socket
 from os import path
+import io
 
 
-def parse_whois_raw(whois_raw: str):
+def parse_whois_raw(whois_raw):
     """
     解析键值对
-    :param whois_raw:
+    :param whois_raw: str
     :return:
     """
     data = {}
     for row in whois_raw.split("\n"):
-        if ":" in row:
-            row_split = row.split(":", maxsplit=1)
+        # tw
+        if 'Record expires on' in row or 'Record created on' in row:
+            row_split = row.split("on", maxsplit=1)
+        elif ":" in row:
+            # fix: Python2 split() takes no keyword arguments
+            row_split = row.split(":", 1)
         else:
-            row_split = row.split(" ", maxsplit=1)
+            row_split = row.split(" ", 1)
 
         if len(row_split) == 2:
             key, value = row_split
@@ -27,13 +34,14 @@ def parse_whois_raw(whois_raw: str):
     return data
 
 
-def get_whois_raw(domain: str, server: str, port=43, timeout=5) -> str:
+def get_whois_raw(domain, server, port=43, timeout=5):
     """
     发送http请求，获取信息
-    :param domain:
-    :param server:
-    :param port:
-    :return:
+    :param domain: str
+    :param server: str
+    :param port: int
+    :param timeout: int
+    :return: str
     """
     # 创建连接
     sock = socket.create_connection((server, port))
@@ -65,8 +73,8 @@ def load_whois_servers():
     }
     """
     dct = {}
-
-    with open(path.join(path.dirname(__file__), 'whois-servers.txt'), 'r') as f:
+    # fix：Python2 encoding error
+    with io.open(path.join(path.dirname(__file__), 'whois-servers.txt'), 'r', encoding='utf-8') as f:
         for line in f:
             if line.startswith(";"):
                 pass

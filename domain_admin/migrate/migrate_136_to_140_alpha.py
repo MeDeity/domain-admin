@@ -6,7 +6,7 @@
 cmd:
 $ python domain_admin/migrate/migrate_136_to_140.py
 """
-
+from __future__ import print_function, unicode_literals, absolute_import, division
 from playhouse.migrate import migrate
 
 from domain_admin.migrate import migrate_common
@@ -22,7 +22,16 @@ def execute_migrate():
 
     migrator = migrate_common.get_migrator(db)
 
-    migrate(
-        migrator.add_column(DomainModel._meta.table_name, DomainModel.root_domain.name, DomainModel.root_domain),
-        migrator.add_column(DomainModel._meta.table_name, DomainModel.is_dynamic_host.name, DomainModel.is_dynamic_host),
-    )
+    migrate_rows = [
+        migrator.add_column(
+            DomainModel._meta.table_name,
+            DomainModel.root_domain.name,
+            DomainModel.root_domain),
+
+        migrator.add_column(
+            DomainModel._meta.table_name,
+            DomainModel.is_dynamic_host.name,
+            DomainModel.is_dynamic_host),
+    ]
+
+    migrate_common.try_execute_migrate(migrate_rows)

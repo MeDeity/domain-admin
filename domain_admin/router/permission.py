@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import print_function, unicode_literals, absolute_import, division
 from flask import request, g
 
 from domain_admin.config import ADMIN_USERNAME, TOKEN_KEY
@@ -10,7 +11,8 @@ from domain_admin.utils.flask_ext.app_exception import UnauthorizedAppException,
 WHITE_LIST = [
     '/api/login',
     '/api/register',
-    '/api/auto'
+    '/api/auto',
+    '/api/getSystemVersion',
 ]
 
 # 仅管理账号可访问的接口
@@ -18,12 +20,16 @@ ADMIN_API_LIST = [
     # 全局配置管理
     '/api/getAllSystemConfig',
     '/api/updateSystemConfig',
+    '/api/getSystemEnvConfig',
+    '/api/getCronConfig',
+    '/api/updateCronConfig',
 
     # 用户管理
-    '/api/getUserList',
+    # '/api/getUserList',
     '/api/addUser',
     '/api/updateUserStatus',
     '/api/deleteUser'
+    '/api/resetUserPasswordUser'
 ]
 
 API_PREFIX = '/api'
