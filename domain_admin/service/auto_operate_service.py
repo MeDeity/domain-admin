@@ -21,8 +21,12 @@ def initDriver():
 
 # how to use : wait_for_visibility(driver, By.ID, "my-element-id")
 def wait_for_visibility(driver, by, value, timeout=10):
-    wait = WebDriverWait(driver, timeout)
-    element = wait.until(EC.visibility_of_element_located((by, value)))
+    element = None
+    try:
+        wait = WebDriverWait(driver, timeout)
+        element = wait.until(EC.visibility_of_element_located((by, value)))
+    except:
+        print(f'element not exist:{value}')
     return element
 
 # 是否可点击
@@ -33,17 +37,25 @@ def wait_for_clickable(driver, by, value, timeout=10):
 
 def wait_for_input(driver, by, value, input, timeout=10):
     wait = WebDriverWait(driver, timeout)
-    element = wait.until(EC.element_to_be_clickable((by, value)))
-    if element:
-        element.send_keys(input)
+    element = None
+    try:
+        element = wait.until(EC.element_to_be_clickable((by, value)))
+        if element:
+            element.send_keys(input)
+    except Exception as e:    
+        print(f'element not exist(input):{value}')    
     return element
 
 #等待并点击
 def wait_for_click(driver, by, value, timeout=10):
     wait = WebDriverWait(driver, timeout)
-    element = wait.until(EC.element_to_be_clickable((by, value)))
-    if element:
-        element.click()
+    element = None
+    try:
+        element = wait.until(EC.element_to_be_clickable((by, value)))
+        if element:
+            element.click()
+    except Exception as e:
+        print(f'element not exist(click):{value}')    
     return element
 
 # 是否可点击
@@ -143,35 +155,41 @@ def start():
     while True:
         try: 
             for i in range(5):
-                print("....")
+                print("love some one")
                 wait_for_click(driver,By.CSS_SELECTOR,'#mm_cc > div.encounters-card__inner > section > div > div.big-photo__actions.js-profile-actions-container.js-core-events-container > div > div.encounters-actions__main-items.js-profile-header-buttons > div.encounters-actions__item.encounters-actions__item--yes > button')
-                time.sleep(3.5)   
+                # 关闭突然弹出的匹配提示
+                print("pool.....")
+                time.sleep(1.5)  
+                wait_for_click(driver,By.CSS_SELECTOR,'body > aside > section > div.ovl__frame-inner.js-ovl-content > div > button')
+                time.sleep(1.5)   
             # element = wait_for_visibility(driver,By.CSS_SELECTOR,"#tabbar > nav > a:nth-child(4) > div.sidebar-menu__item-mark > span")     
             # if element:
-            # numberStr = element.text or '0'
-            # number = int(numberStr)
-            # print("element:",number)
+            #     numberStr = element.text or '0'
+            #     number = int(numberStr)
+            #     print("has unread msg:",number)
             # 准备聊天
+            print("to chat.....")
             wait_for_click(driver,By.CSS_SELECTOR,'#tabbar > nav > a:nth-child(4)')
             
+            print("read chat list.....")
             # 获取聊天列表 #userlist > div > div.contacts__users.js-im-users
             elements = wait_for_all_elements(driver,By.CSS_SELECTOR,"#userlist > div > div.contacts__users.js-im-users > div")
             for item in elements:
                 unread = item.find_element(By.CSS_SELECTOR,"div.contact-card__image > div > div:nth-child(2)")
-                print(f'是否显示{unread.is_displayed()}')
+                print(f'is unread:{unread.is_displayed()}')
                 if unread and unread.is_displayed():
                     print(f'{item.text}')
-                    print(f'存在未读信息')
+                    print(f'has unread...')
                     item.click()
                     time.sleep(5)
             # else:
             #     print("暂无信息")
             wait_for_click(driver,By.XPATH,'//*[@id="tabbar"]/nav/a[1]')
-        except:
-            print('没有该元素...')     
+        except Exception as e:
+            print('没有该元素...',e)     
         # 恢复
         #        
-        time.sleep(36)
+        time.sleep(16)
     
 
 
