@@ -1,0 +1,1 @@
+from domain_admin.model.greet_model import GreetModel
