@@ -10,7 +10,7 @@ from domain_admin.model.base_model import BaseModel
 from domain_admin.utils import bcrypt_util
 
 
-class CustomModel(BaseModel):
+class GreetModel(BaseModel):
     """打招呼"""
     id = AutoField(primary_key=True)
 

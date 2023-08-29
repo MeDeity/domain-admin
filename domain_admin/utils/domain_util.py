@@ -47,6 +47,16 @@ def parse_domain(domain):
     else:
         return None
 
+def parse_greet_from_csv_file(filename):
+    """
+    读取csv文件 适合完整导入
+    :param filename:
+    :return: ParsedGreet
+    """
+    with io.open(filename, 'r', encoding='utf-8') as f:
+        # 内容字段
+        for line in f.readlines():
+            yield line
 
 def parse_domain_from_csv_file(filename):
     """
@@ -88,7 +98,16 @@ def parse_domain_from_csv_file(filename):
 
                 yield item
 
-
+def parse_greet_from_txt_file(filename):
+    """
+    读取txt文件 适合快速导入
+    :param filename:
+    :return: ParsedDomain
+    """
+    with io.open(filename, 'r', encoding='utf-8') as f:
+        for line in f.readlines():
+            yield line
+            
 def parse_domain_from_txt_file(filename):
     """
     读取txt文件 适合快速导入
@@ -117,6 +136,18 @@ def parse_domain_from_txt_file(filename):
 
                 yield item
 
+def parse_greet_from_file(filename):
+    """
+    解析Greet文件的工厂方法
+    :param filename:
+    :return: ParsedGreet
+    """
+    file_type = file_util.get_filename_ext(filename)
+
+    if file_type == 'csv':
+        return parse_greet_from_csv_file(filename)
+    else:
+        return parse_greet_from_txt_file(filename)
 
 def parse_domain_from_file(filename):
     """
