@@ -11,9 +11,34 @@ def add_greet_from_file(filename, user_id):
 
     lst = [
         {
-            'domain': item.domain,
+            'content': item,
         } for item in lst
     ]
 
     for batch in chunked(lst, 500):
         GreetModel.insert_many(batch).on_conflict_ignore().execute()
+
+def update_greet(row_id,content):
+    """
+    更新信息
+    :param row_id: id
+    :return:
+    """
+    # logger.info("%s", model_to_dict(domain_row))
+
+    greet_row = GreetModel.get_by_id(row_id)
+
+    GreetModel.update(
+        content=content,
+    ).where(
+        GreetModel.id == greet_row.id
+    ).execute()
+    
+
+def get_greet_list():
+    list=[]
+    query = GreetModel.select()
+    # 遍历记录并处理每一条记录
+    for record in query:
+        list.append(record)
+    return list
